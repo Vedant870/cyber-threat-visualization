@@ -1,0 +1,13 @@
+event_id,event_type,severity,source,timestamp,detections
+EVT-001,malware,7,endpoint,2026-01-10T10:14:00Z,3
+EVT-002,phishing,5,email,2026-01-10T11:05:00Z,2
+EVT-003,ddos,8,network,2026-01-10T11:20:00Z,4
+EVT-004,bruteforce,6,auth,2026-01-10T12:02:00Z,3
+EVT-005,malware,4,endpoint,2026-01-10T12:22:00Z,1
+EVT-006,phishing,5,email,2026-01-10T13:14:00Z,2
+EVT-007,malware,9,endpoint,2026-01-10T13:55:00Z,5
+EVT-008,ddos,7,network,2026-01-10T14:18:00Z,4
+EVT-009,ransomware,9,endpoint,2026-01-10T14:45:00Z,6
+EVT-010,bruteforce,6,auth,2026-01-10T15:05:00Z,3
+EVT-011,phishing,3,email,2026-01-10T15:35:00Z,1
+EVT-012,malware,8,endpoint,2026-01-10T16:22:00Z,4
