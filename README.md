@@ -1,35 +1,54 @@
-# Cyber Threat Visualization
+# Development of Interactive Cyber Threat Visualization Dashboard
 
-This repository contains a professional, submission-ready internship project pack for Infosys. It includes documentation, AI model training with a synthetic dataset, Python and SQL tasks, architecture documentation, and placeholders for required links.
+This repository contains a complete, professional cybersecurity analytics workspace with an interactive Plotly/Dash dashboard, AI model demo, SQL task files, and project documentation.
 
-## Project Overview
-The **Cyber Threat Visualization** project provides a structured portfolio pack for internship submission. It focuses on documenting an AI-enabled analytics workflow and visual threat reporting suitable for a security operations context. The AI model predicts a **Threat Level (Low/Medium/High)** from event telemetry.
+## Project Statement
+The project builds an interactive, data-driven dashboard that gives cybersecurity analysts immediate visual understanding of the threat landscape. Simulated incident data is aggregated, normalized, and visualized to reveal attack patterns, temporal trends, geographical hotspots, and system vulnerabilities.
 
-## Key Deliverables
-- **Name, Email, Git Link, Deployment Link, Video Link, Comments, Queries**: [`docs/Submission-Details.md`](docs/Submission-Details.md)
-- **Model Research**: [`ai-model/Model-Research.md`](ai-model/Model-Research.md)
-- **AI Training Pipeline**: [`ai-model/README.md`](ai-model/README.md)
-- **Python Task**: [`python-task/README.md`](python-task/README.md)
-- **SQL Task**: [`sql-task/README.md`](sql-task/README.md)
-- **Architecture**: [`architecture/architecture.md`](architecture/architecture.md)
-- **Deployment**: [`deployment/deployment.md`](deployment/deployment.md)
-- **Recorded Video Link**: [`records/recorded-video-link.txt`](records/recorded-video-link.txt)
-- **Agile Document**: [`agile/agile-document.md`](agile/agile-document.md)
-- **PPT Outline**: [`ppt/ppt-outline.md`](ppt/ppt-outline.md)
-- **Leave Document**: [`leave/leave-document.md`](leave/leave-document.md)
-- **Comment**: [`docs/comment.md`](docs/comment.md)
-- **Query**: [`queries/queries.md`](queries/queries.md)
-- **How this project gets ready**: [`docs/learning-guide.md`](docs/learning-guide.md)
+## Outcomes Delivered
+- **Geospatial Risk Mapping**: Global view of origin-target threat routes and hotspot countries.
+- **Trend and Anomaly Detection**: Time-series charts with rolling anomaly detection for unusual attack surges.
+- **Vulnerability Prioritization**: Treemap/sunburst hierarchy by MITRE tactic, technique, and target systems.
+- **Enhanced Reporting**: Downloadable executive-ready report generated from active dashboard filters.
 
-## Recommended Tech Stack (for future implementation)
-- **Frontend**: React, Tailwind CSS
-- **Backend**: Python (FastAPI) or Java (Spring Boot)
-- **Database**: PostgreSQL
-- **AI/ML**: scikit-learn, pandas
-- **Deployment**: Vercel/Netlify (frontend), Render/Railway (backend)
+## Module-Wise Implementation
 
-## Getting Started (AI Model)
-See [`ai-model/README.md`](ai-model/README.md) for step-by-step setup and training instructions.
+### Module 1: Data Acquisition and Structuring
+- Raw events source: [`python-task/data/threat_events.csv`](python-task/data/threat_events.csv)
+- Data pipeline: [`python-task/dashboard/data_pipeline.py`](python-task/dashboard/data_pipeline.py)
+- Structured dataset output: [`python-task/dashboard/data/structured_threat_events.csv`](python-task/dashboard/data/structured_threat_events.csv)
 
----
-**Note**: All personal details and links are placeholders. Replace them in [`docs/Submission-Details.md`](docs/Submission-Details.md) before submission.
+### Module 2: Core Visualization Development
+- Time-series trend and anomaly analysis
+- Event distribution and severity analytics
+- Implemented in: [`python-task/dashboard/app.py`](python-task/dashboard/app.py)
+
+### Module 3: Geospatial and Hierarchical Visualization
+- Interactive global map (origins, targets, top threat routes)
+- Treemap / sunburst for MITRE ATT&CK + target systems
+- Implemented in: [`python-task/dashboard/app.py`](python-task/dashboard/app.py)
+
+### Module 4: Dashboard Integration and Finalization
+- Unified responsive Dash application
+- Cross-filtering controls and KPI cards
+- Executive report export
+- Implemented in: [`python-task/dashboard/app.py`](python-task/dashboard/app.py)
+
+## Run the Dashboard
+1. Install dependencies:
+   ```bash
+   pip install -r python-task/dashboard/requirements.txt
+   ```
+2. Start the app:
+   ```bash
+   python python-task/dashboard/app.py
+   ```
+3. Open browser at `http://127.0.0.1:8050`.
+
+## Key Project Documents
+- Dashboard guide: [`python-task/dashboard/README.md`](python-task/dashboard/README.md)
+- Python task overview: [`python-task/README.md`](python-task/README.md)
+- AI model training demo: [`ai-model/README.md`](ai-model/README.md)
+- System architecture: [`architecture/architecture.md`](architecture/architecture.md)
+- Deployment notes: [`deployment/deployment.md`](deployment/deployment.md)
+- Submission placeholders: [`docs/Submission-Details.md`](docs/Submission-Details.md)
