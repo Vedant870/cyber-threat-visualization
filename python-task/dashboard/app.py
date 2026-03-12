@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import numpy as np
 import pandas as pd
@@ -95,6 +96,22 @@ GRAPH_STYLE = {"height": "360px"}
 LIVE_INTERVAL_MS = 15000
 LIVE_SLA_SECONDS = 120
 
+CLOCK_INTERVAL_MS = 1000
+
+TIMEZONE_OPTIONS: list[tuple[str, str]] = [
+    ("India • Asia/Kolkata", "Asia/Kolkata"),
+    ("UTC • Coordinated Universal Time", "UTC"),
+    ("New York • America/New_York", "America/New_York"),
+    ("London • Europe/London", "Europe/London"),
+    ("Dubai • Asia/Dubai", "Asia/Dubai"),
+    ("Singapore • Asia/Singapore", "Asia/Singapore"),
+    ("Tokyo • Asia/Tokyo", "Asia/Tokyo"),
+    ("Sydney • Australia/Sydney", "Australia/Sydney"),
+    ("Los Angeles • America/Los_Angeles", "America/Los_Angeles"),
+]
+
+DEFAULT_TZ = "Asia/Kolkata"
+
 
 def resolve_theme(theme_mode: str | None) -> str:
     return "light" if isinstance(theme_mode, str) and theme_mode.lower() == "light" else "dark"
@@ -140,6 +157,25 @@ def theme_from_store(theme_data: object) -> str:
     if isinstance(theme_data, str):
         return resolve_theme(theme_data)
     return DEFAULT_THEME
+
+
+def safe_zoneinfo(tz_name: str | None) -> ZoneInfo:
+    zone_key = tz_name if isinstance(tz_name, str) and tz_name else DEFAULT_TZ
+    try:
+        return ZoneInfo(zone_key)
+    except Exception:
+        return ZoneInfo("UTC")
+
+
+def clock_snapshot(tz_name: str | None) -> tuple[str, str, str, str]:
+    zone = safe_zoneinfo(tz_name)
+    now_local = datetime.now(zone)
+    return (
+        now_local.strftime("%H:%M:%S"),
+        now_local.strftime("%A, %d %b %Y"),
+        str(zone),
+        now_local.strftime("UTC%z"),
+    )
 
 
 def load_dataset() -> pd.DataFrame:
@@ -757,6 +793,7 @@ app.layout = html.Div(
     children=[
         dcc.Store(id="theme-store", storage_type="local", data={"mode": DEFAULT_THEME}),
         dcc.Interval(id="live-interval", interval=LIVE_INTERVAL_MS, n_intervals=0),
+        dcc.Interval(id="clock-interval", interval=CLOCK_INTERVAL_MS, n_intervals=0),
         html.Div(
             className="hero",
             children=[
@@ -795,7 +832,34 @@ app.layout = html.Div(
                     f"Coverage: {MIN_DATE} to {MAX_DATE}  •  Structured Events: {len(DF):,}",
                     className="muted",
                 ),
-                html.Div(className="cyber-scanline", children=[html.Span()]),
+            ],
+        ),
+        html.Div(
+            className="clock-wrap",
+            children=[
+                html.Div(
+                    className="clock-display",
+                    children=[
+                        html.Span("World Clock", className="clock-label"),
+                        html.H2(id="clock-time", className="clock-time text-highlight-black"),
+                        html.P(id="clock-date", className="clock-date"),
+                        html.P(id="clock-zone", className="clock-zone"),
+                    ],
+                ),
+                html.Div(
+                    className="clock-control",
+                    children=[
+                        html.Label("Select Locality / Timezone"),
+                        dcc.Dropdown(
+                            id="clock-timezone",
+                            options=[
+                                {"label": label, "value": value} for label, value in TIMEZONE_OPTIONS
+                            ],
+                            value=DEFAULT_TZ,
+                            clearable=False,
+                        ),
+                    ],
+                ),
             ],
         ),
         html.Div(
@@ -1211,6 +1275,19 @@ def set_theme(day_clicks: int, dark_clicks: int, theme_data: object) -> dict[str
 def apply_theme_class(theme_data: object) -> str:
     mode = theme_from_store(theme_data)
     return "page theme-light" if mode == "light" else "page theme-dark"
+
+
+@app.callback(
+    Output("clock-time", "children"),
+    Output("clock-date", "children"),
+    Output("clock-zone", "children"),
+    Input("clock-interval", "n_intervals"),
+    Input("clock-timezone", "value"),
+)
+def update_clock(n_intervals: int, tz_name: str | None) -> tuple[str, str, str]:
+    _ = n_intervals
+    current_time, current_date, zone_name, offset = clock_snapshot(tz_name)
+    return current_time, current_date, f"{zone_name} • {offset}"
 
 
 @app.callback(
