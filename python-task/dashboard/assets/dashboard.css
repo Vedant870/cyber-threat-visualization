@@ -202,6 +202,36 @@ body::before {
   margin-bottom: 14px;
 }
 
+.rt-spec-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.rt-spec {
+  background: linear-gradient(150deg, rgba(10, 18, 37, 0.95), rgba(13, 23, 46, 0.88));
+  border: 1px solid rgba(71, 98, 151, 0.5);
+  border-radius: var(--radius-md);
+  padding: 11px;
+  box-shadow: 0 12px 24px rgba(3, 8, 20, 0.4);
+}
+
+.rt-spec span {
+  color: #9ec6ff;
+  font-size: 0.74rem;
+  display: block;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+}
+
+.rt-value {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
 .kpi {
   position: relative;
   overflow: hidden;
@@ -492,6 +522,10 @@ body::before {
     grid-template-columns: repeat(3, minmax(180px, 1fr));
   }
 
+  .rt-spec-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .kpi-grid {
     grid-template-columns: repeat(3, minmax(140px, 1fr));
   }
@@ -523,6 +557,10 @@ body::before {
     grid-template-columns: repeat(2, minmax(140px, 1fr));
   }
 
+  .rt-spec-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .grid.two {
     grid-template-columns: 1fr;
   }
@@ -538,7 +576,8 @@ body::before {
   }
 
   .filters,
-  .kpi-grid {
+  .kpi-grid,
+  .rt-spec-grid {
     grid-template-columns: 1fr;
   }
 

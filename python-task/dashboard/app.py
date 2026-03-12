@@ -48,6 +48,9 @@ GRAPH_CONFIG = {
 
 GRAPH_STYLE = {"height": "360px"}
 
+LIVE_INTERVAL_MS = 15000
+LIVE_SLA_SECONDS = 120
+
 
 def load_dataset() -> pd.DataFrame:
     if not DATA_PATH.exists():
@@ -461,6 +464,65 @@ def hotspot_rows(df: pd.DataFrame) -> list[dict[str, object]]:
     return ranked.sort_values(["priority", "incidents"], ascending=False).head(12).to_dict("records")
 
 
+def build_realtime_specs(
+    live_df: pd.DataFrame,
+    scoped_df: pd.DataFrame,
+) -> tuple[str, str, str, str, str, str, str, str]:
+    if live_df.empty:
+        return (
+            "Offline",
+            "N/A",
+            "0.00 ev/min",
+            "0.0%",
+            "N/A",
+            "No coverage",
+            "0.0%",
+            "No sync",
+        )
+
+    now_ts = pd.Timestamp.now(tz="UTC")
+    latest_ts = pd.to_datetime(live_df["timestamp"].max(), utc=True)
+    lag_seconds = max(float((now_ts - latest_ts).total_seconds()), 0.0)
+
+    if lag_seconds <= LIVE_SLA_SECONDS:
+        status = "Live"
+    elif lag_seconds <= LIVE_SLA_SECONDS * 3:
+        status = "Warm"
+    else:
+        status = "Delayed"
+
+    latency = f"{lag_seconds:.0f}s"
+
+    active_df = scoped_df if not scoped_df.empty else live_df
+    last_hour = active_df[active_df["timestamp"] >= now_ts - pd.Timedelta(hours=1)]
+    velocity = len(last_hour) / 60.0
+    anomaly_rate = (float(last_hour["anomaly_flag"].mean()) * 100.0) if not last_hour.empty else 0.0
+
+    freshness = f"{lag_seconds:.0f}s lag • SLA {'met' if lag_seconds <= LIVE_SLA_SECONDS else 'breached'}"
+
+    start_ts = pd.to_datetime(live_df["timestamp"].min(), utc=True)
+    coverage_days = max(int((latest_ts - start_ts).total_seconds() // 86400) + 1, 1)
+    coverage = f"{start_ts.strftime('%Y-%m-%d')} → {latest_ts.strftime('%Y-%m-%d')} ({coverage_days}d)"
+
+    quality_cols = ["event_type", "source", "mitre_tactic", "risk_score", "target_system"]
+    completeness = 1.0 - float(active_df[quality_cols].isna().mean().mean())
+    timeliness_penalty = min(lag_seconds / 8.0, 25.0)
+    signal_quality = max(0.0, min(100.0, completeness * 100.0 - timeliness_penalty))
+
+    sync = now_ts.strftime("%Y-%m-%d %H:%M:%S UTC")
+
+    return (
+        status,
+        latency,
+        f"{velocity:.2f} ev/min",
+        f"{anomaly_rate:.1f}%",
+        freshness,
+        coverage,
+        f"{signal_quality:.1f}%",
+        sync,
+    )
+
+
 def build_ai_insights(df: pd.DataFrame) -> tuple[str, str, str]:
     if df.empty:
         return (
@@ -594,6 +656,7 @@ server = app.server
 app.layout = html.Div(
     className="page",
     children=[
+        dcc.Interval(id="live-interval", interval=LIVE_INTERVAL_MS, n_intervals=0),
         html.Div(
             className="hero",
             children=[
@@ -707,6 +770,67 @@ app.layout = html.Div(
                             n_clicks=0,
                         ),
                         dcc.Download(id="download-report"),
+                    ],
+                ),
+            ],
+        ),
+        html.Div(
+            className="rt-spec-grid",
+            children=[
+                html.Div(
+                    className="rt-spec",
+                    children=[
+                        html.Span("Stream Status"),
+                        html.P(id="rt-status", className="text-highlight-black rt-value"),
+                    ],
+                ),
+                html.Div(
+                    className="rt-spec",
+                    children=[
+                        html.Span("Pipeline Latency"),
+                        html.P(id="rt-latency", className="text-highlight-black rt-value"),
+                    ],
+                ),
+                html.Div(
+                    className="rt-spec",
+                    children=[
+                        html.Span("Incident Velocity"),
+                        html.P(id="rt-velocity", className="text-highlight-black rt-value"),
+                    ],
+                ),
+                html.Div(
+                    className="rt-spec",
+                    children=[
+                        html.Span("Anomaly Rate (1h)"),
+                        html.P(id="rt-anomaly-rate", className="text-highlight-black rt-value"),
+                    ],
+                ),
+                html.Div(
+                    className="rt-spec",
+                    children=[
+                        html.Span("Freshness"),
+                        html.P(id="rt-freshness", className="text-highlight-black rt-value"),
+                    ],
+                ),
+                html.Div(
+                    className="rt-spec",
+                    children=[
+                        html.Span("Coverage Window"),
+                        html.P(id="rt-coverage", className="text-highlight-black rt-value"),
+                    ],
+                ),
+                html.Div(
+                    className="rt-spec",
+                    children=[
+                        html.Span("Signal Quality"),
+                        html.P(id="rt-signal-quality", className="text-highlight-black rt-value"),
+                    ],
+                ),
+                html.Div(
+                    className="rt-spec",
+                    children=[
+                        html.Span("Last Sync"),
+                        html.P(id="rt-last-sync", className="text-highlight-black rt-value"),
                     ],
                 ),
             ],
@@ -973,6 +1097,14 @@ app.layout = html.Div(
     Output("kpi-anomaly", "children"),
     Output("kpi-critical", "children"),
     Output("kpi-target", "children"),
+    Output("rt-status", "children"),
+    Output("rt-latency", "children"),
+    Output("rt-velocity", "children"),
+    Output("rt-anomaly-rate", "children"),
+    Output("rt-freshness", "children"),
+    Output("rt-coverage", "children"),
+    Output("rt-signal-quality", "children"),
+    Output("rt-last-sync", "children"),
     Output("ai-narrative", "children"),
     Output("ai-forecast", "children"),
     Output("ai-action", "children"),
@@ -983,6 +1115,7 @@ app.layout = html.Div(
     Output("treemap-graph", "figure"),
     Output("sunburst-graph", "figure"),
     Output("hotspot-table", "data"),
+    Input("live-interval", "n_intervals"),
     Input("date-range", "start_date"),
     Input("date-range", "end_date"),
     Input("severity-filter", "value"),
@@ -991,6 +1124,7 @@ app.layout = html.Div(
     Input("tactic-filter", "value"),
 )
 def refresh(
+    n_intervals: int,
     start_date: str | None,
     end_date: str | None,
     severities: list[str] | None,
@@ -998,7 +1132,12 @@ def refresh(
     sources: list[str] | None,
     tactics: list[str] | None,
 ):
-    filtered = apply_filters(DF, start_date, end_date, severities, event_types, sources, tactics)
+    _ = n_intervals
+    live_df = load_dataset()
+    filtered = apply_filters(live_df, start_date, end_date, severities, event_types, sources, tactics)
+    rt_status, rt_latency, rt_velocity, rt_anomaly_rate, rt_freshness, rt_coverage, rt_signal_quality, rt_last_sync = (
+        build_realtime_specs(live_df, filtered)
+    )
 
     if filtered.empty:
         return (
@@ -1007,6 +1146,14 @@ def refresh(
             "0",
             "0",
             "N/A",
+            rt_status,
+            rt_latency,
+            rt_velocity,
+            rt_anomaly_rate,
+            rt_freshness,
+            rt_coverage,
+            rt_signal_quality,
+            rt_last_sync,
             "No AI narrative available for the current filter selection.",
             "No AI forecast available because there are no incidents in range.",
             "No AI recommendation available without hotspot activity.",
@@ -1032,6 +1179,14 @@ def refresh(
         fmt_int(anomalies),
         fmt_int(critical),
         top_target,
+        rt_status,
+        rt_latency,
+        rt_velocity,
+        rt_anomaly_rate,
+        rt_freshness,
+        rt_coverage,
+        rt_signal_quality,
+        rt_last_sync,
         ai_narrative,
         ai_forecast,
         ai_action,
@@ -1068,7 +1223,8 @@ def download_report(
     if not n_clicks:
         raise PreventUpdate
 
-    filtered = apply_filters(DF, start_date, end_date, severities, event_types, sources, tactics)
+    live_df = load_dataset()
+    filtered = apply_filters(live_df, start_date, end_date, severities, event_types, sources, tactics)
     report = build_executive_report(filtered, start_date, end_date)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
