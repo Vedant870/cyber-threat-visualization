@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from dash import Dash, Input, Output, State, dash_table, dcc, html
+from dash import Dash, Input, Output, State, ctx, dash_table, dcc, html
 from dash.exceptions import PreventUpdate
 from plotly.subplots import make_subplots
 
@@ -28,7 +28,7 @@ WEEKDAY_ORDER = [
 
 SEVERITY_ORDER = ["Low", "Medium", "High", "Critical"]
 
-PALETTE = {
+PALETTE_DARK = {
     "panel": "#111827",
     "bg": "#060b18",
     "text": "#e5e7eb",
@@ -38,7 +38,51 @@ PALETTE = {
     "rose": "#fb7185",
     "lime": "#86efac",
     "indigo": "#818cf8",
+    "grid": "#233047",
+    "hover_bg": "#0f172a",
+    "hover_border": "#334155",
+    "geo_land": "#0f172a",
+    "geo_ocean": "#020617",
+    "geo_country": "#334155",
+    "geo_coast": "#475569",
+    "table_header_bg": "#1e293b",
+    "table_header_text": "#f8fafc",
+    "table_header_border": "#334155",
+    "table_cell_bg": "#0f172a",
+    "table_cell_text": "#cbd5e1",
+    "table_cell_border": "#1e293b",
+    "table_priority_bg": "#3f1d2e",
+    "table_priority_text": "#fecdd3",
 }
+
+PALETTE_LIGHT = {
+    "panel": "#ffffff",
+    "bg": "#f1f5f9",
+    "text": "#0f172a",
+    "muted": "#64748b",
+    "cyan": "#0284c7",
+    "amber": "#d97706",
+    "rose": "#dc2626",
+    "lime": "#16a34a",
+    "indigo": "#4f46e5",
+    "grid": "#d1dced",
+    "hover_bg": "#ffffff",
+    "hover_border": "#cbd5e1",
+    "geo_land": "#e2e8f0",
+    "geo_ocean": "#dbeafe",
+    "geo_country": "#94a3b8",
+    "geo_coast": "#cbd5e1",
+    "table_header_bg": "#dbeafe",
+    "table_header_text": "#0f172a",
+    "table_header_border": "#bfdbfe",
+    "table_cell_bg": "#ffffff",
+    "table_cell_text": "#1e293b",
+    "table_cell_border": "#e2e8f0",
+    "table_priority_bg": "#fee2e2",
+    "table_priority_text": "#991b1b",
+}
+
+DEFAULT_THEME = "dark"
 
 GRAPH_CONFIG = {
     "displaylogo": False,
@@ -50,6 +94,52 @@ GRAPH_STYLE = {"height": "360px"}
 
 LIVE_INTERVAL_MS = 15000
 LIVE_SLA_SECONDS = 120
+
+
+def resolve_theme(theme_mode: str | None) -> str:
+    return "light" if isinstance(theme_mode, str) and theme_mode.lower() == "light" else "dark"
+
+
+def get_palette(theme_mode: str | None) -> dict[str, str]:
+    return PALETTE_LIGHT if resolve_theme(theme_mode) == "light" else PALETTE_DARK
+
+
+def table_styles(theme_mode: str | None) -> tuple[dict[str, str], dict[str, str], list[dict[str, object]]]:
+    palette = get_palette(theme_mode)
+    style_header = {
+        "backgroundColor": palette["table_header_bg"],
+        "color": palette["table_header_text"],
+        "fontWeight": "700",
+        "border": f"1px solid {palette['table_header_border']}",
+    }
+    style_cell = {
+        "backgroundColor": palette["table_cell_bg"],
+        "color": palette["table_cell_text"],
+        "padding": "10px",
+        "border": f"1px solid {palette['table_cell_border']}",
+        "fontSize": "13px",
+    }
+    style_data_conditional = [
+        {
+            "if": {"filter_query": "{priority} >= 75"},
+            "backgroundColor": palette["table_priority_bg"],
+            "color": palette["table_priority_text"],
+        }
+    ]
+    return style_header, style_cell, style_data_conditional
+
+
+DEFAULT_TABLE_HEADER_STYLE, DEFAULT_TABLE_CELL_STYLE, DEFAULT_TABLE_CONDITIONAL_STYLE = table_styles(
+    DEFAULT_THEME
+)
+
+
+def theme_from_store(theme_data: object) -> str:
+    if isinstance(theme_data, dict):
+        return resolve_theme(str(theme_data.get("mode")))
+    if isinstance(theme_data, str):
+        return resolve_theme(theme_data)
+    return DEFAULT_THEME
 
 
 def load_dataset() -> pd.DataFrame:
@@ -117,12 +207,13 @@ def apply_filters(
     return view.copy()
 
 
-def style_figure(fig: go.Figure, title: str) -> go.Figure:
+def style_figure(fig: go.Figure, title: str, theme_mode: str | None = None) -> go.Figure:
+    palette = get_palette(theme_mode)
     fig.update_layout(
-        title=dict(text=title, x=0.02, xanchor="left", font=dict(size=17, color=PALETTE["text"])),
+        title=dict(text=title, x=0.02, xanchor="left", font=dict(size=17, color=palette["text"])),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(color=PALETTE["text"], family="Inter, Segoe UI, sans-serif"),
+        font=dict(color=palette["text"], family="Inter, Segoe UI, sans-serif"),
         margin=dict(l=30, r=20, t=58, b=34),
         legend=dict(
             orientation="h",
@@ -135,9 +226,9 @@ def style_figure(fig: go.Figure, title: str) -> go.Figure:
             font=dict(size=11),
         ),
         hoverlabel=dict(
-            bgcolor="#0f172a",
-            bordercolor="#334155",
-            font=dict(color=PALETTE["text"]),
+            bgcolor=palette["hover_bg"],
+            bordercolor=palette["hover_border"],
+            font=dict(color=palette["text"]),
         ),
         autosize=True,
         uirevision="threat-dashboard",
@@ -145,7 +236,12 @@ def style_figure(fig: go.Figure, title: str) -> go.Figure:
     return fig
 
 
-def empty_fig(title: str, text: str = "No data for selected filters") -> go.Figure:
+def empty_fig(
+    title: str,
+    text: str = "No data for selected filters",
+    theme_mode: str | None = None,
+) -> go.Figure:
+    palette = get_palette(theme_mode)
     fig = go.Figure()
     fig.add_annotation(
         text=text,
@@ -154,16 +250,17 @@ def empty_fig(title: str, text: str = "No data for selected filters") -> go.Figu
         xref="paper",
         yref="paper",
         showarrow=False,
-        font=dict(size=16, color=PALETTE["muted"]),
+        font=dict(size=16, color=palette["muted"]),
     )
     fig.update_xaxes(visible=False)
     fig.update_yaxes(visible=False)
-    return style_figure(fig, title)
+    return style_figure(fig, title, theme_mode)
 
 
-def trend_chart(df: pd.DataFrame) -> go.Figure:
+def trend_chart(df: pd.DataFrame, theme_mode: str | None = None) -> go.Figure:
+    palette = get_palette(theme_mode)
     if df.empty:
-        return empty_fig("Trend & Anomaly Detection")
+        return empty_fig("Trend & Anomaly Detection", theme_mode=theme_mode)
 
     daily = (
         df.set_index("timestamp")
@@ -184,7 +281,7 @@ def trend_chart(df: pd.DataFrame) -> go.Figure:
             y=daily["events"],
             mode="lines+markers",
             name="Daily Incidents",
-            line=dict(color=PALETTE["cyan"], width=2.5),
+            line=dict(color=palette["cyan"], width=2.5),
             marker=dict(size=4),
         ),
         secondary_y=False,
@@ -195,7 +292,7 @@ def trend_chart(df: pd.DataFrame) -> go.Figure:
             y=daily["rolling_mean"],
             mode="lines",
             name="7-day Moving Avg",
-            line=dict(color=PALETTE["amber"], dash="dash", width=2),
+            line=dict(color=palette["amber"], dash="dash", width=2),
         ),
         secondary_y=False,
     )
@@ -208,7 +305,7 @@ def trend_chart(df: pd.DataFrame) -> go.Figure:
                 y=spikes["events"],
                 mode="markers",
                 name="Anomaly Spike",
-                marker=dict(color=PALETTE["rose"], size=10, symbol="x"),
+                marker=dict(color=palette["rose"], size=10, symbol="x"),
             ),
             secondary_y=False,
         )
@@ -219,20 +316,20 @@ def trend_chart(df: pd.DataFrame) -> go.Figure:
             y=daily["avg_risk"],
             mode="lines",
             name="Average Risk",
-            line=dict(color=PALETTE["indigo"], width=2),
+            line=dict(color=palette["indigo"], width=2),
         ),
         secondary_y=True,
     )
 
-    fig.update_xaxes(title="Date", gridcolor="#233047")
-    fig.update_yaxes(title="Incident Count", secondary_y=False, gridcolor="#233047")
-    fig.update_yaxes(title="Average Risk", secondary_y=True, gridcolor="#233047")
-    return style_figure(fig, "Trend & Anomaly Detection")
+    fig.update_xaxes(title="Date", gridcolor=palette["grid"])
+    fig.update_yaxes(title="Incident Count", secondary_y=False, gridcolor=palette["grid"])
+    fig.update_yaxes(title="Average Risk", secondary_y=True, gridcolor=palette["grid"])
+    return style_figure(fig, "Trend & Anomaly Detection", theme_mode)
 
 
-def type_pie(df: pd.DataFrame) -> go.Figure:
+def type_pie(df: pd.DataFrame, theme_mode: str | None = None) -> go.Figure:
     if df.empty:
-        return empty_fig("Attack Type Distribution")
+        return empty_fig("Attack Type Distribution", theme_mode=theme_mode)
 
     grouped = (
         df.groupby("event_type", as_index=False)
@@ -248,7 +345,7 @@ def type_pie(df: pd.DataFrame) -> go.Figure:
         color_discrete_sequence=px.colors.qualitative.Set3,
         hover_data={"events": True, "avg_risk": ":.2f"},
     )
-    fig = style_figure(fig, "Attack Type Distribution")
+    fig = style_figure(fig, "Attack Type Distribution", theme_mode)
     fig.update_traces(
         textposition="inside",
         textinfo="percent",
@@ -270,9 +367,9 @@ def type_pie(df: pd.DataFrame) -> go.Figure:
     return fig
 
 
-def severity_heatmap(df: pd.DataFrame) -> go.Figure:
+def severity_heatmap(df: pd.DataFrame, theme_mode: str | None = None) -> go.Figure:
     if df.empty:
-        return empty_fig("Severity Heatmap (Weekday × Hour UTC)")
+        return empty_fig("Severity Heatmap (Weekday × Hour UTC)", theme_mode=theme_mode)
 
     matrix = (
         df.groupby(["weekday", "hour_utc"], as_index=False)
@@ -289,12 +386,13 @@ def severity_heatmap(df: pd.DataFrame) -> go.Figure:
         color_continuous_scale="Magma",
         aspect="auto",
     )
-    return style_figure(fig, "Severity Heatmap (Weekday × Hour UTC)")
+    return style_figure(fig, "Severity Heatmap (Weekday × Hour UTC)", theme_mode)
 
 
-def geo_map(df: pd.DataFrame) -> go.Figure:
+def geo_map(df: pd.DataFrame, theme_mode: str | None = None) -> go.Figure:
+    palette = get_palette(theme_mode)
     if df.empty:
-        return empty_fig("Geospatial Risk Mapping")
+        return empty_fig("Geospatial Risk Mapping", theme_mode=theme_mode)
 
     routes = (
         df.groupby(
@@ -384,21 +482,21 @@ def geo_map(df: pd.DataFrame) -> go.Figure:
         geo=dict(
             projection_type="natural earth",
             showland=True,
-            landcolor="#0f172a",
+            landcolor=palette["geo_land"],
             showocean=True,
-            oceancolor="#020617",
+            oceancolor=palette["geo_ocean"],
             showcountries=True,
-            countrycolor="#334155",
-            coastlinecolor="#475569",
-            bgcolor=PALETTE["panel"],
+            countrycolor=palette["geo_country"],
+            coastlinecolor=palette["geo_coast"],
+            bgcolor=palette["panel"],
         )
     )
-    return style_figure(fig, "Geospatial Risk Mapping")
+    return style_figure(fig, "Geospatial Risk Mapping", theme_mode)
 
 
-def mitre_treemap(df: pd.DataFrame) -> go.Figure:
+def mitre_treemap(df: pd.DataFrame, theme_mode: str | None = None) -> go.Figure:
     if df.empty:
-        return empty_fig("MITRE ATT&CK Treemap")
+        return empty_fig("MITRE ATT&CK Treemap", theme_mode=theme_mode)
 
     grouped = (
         df.groupby(["mitre_tactic", "mitre_technique", "target_system"], as_index=False)
@@ -414,12 +512,12 @@ def mitre_treemap(df: pd.DataFrame) -> go.Figure:
         color_continuous_scale="Turbo",
         hover_data={"events": True, "avg_risk": ":.2f"},
     )
-    return style_figure(fig, "MITRE ATT&CK Treemap")
+    return style_figure(fig, "MITRE ATT&CK Treemap", theme_mode)
 
 
-def impact_sunburst(df: pd.DataFrame) -> go.Figure:
+def impact_sunburst(df: pd.DataFrame, theme_mode: str | None = None) -> go.Figure:
     if df.empty:
-        return empty_fig("System Impact Sunburst")
+        return empty_fig("System Impact Sunburst", theme_mode=theme_mode)
 
     grouped = (
         df.groupby(["organization_unit", "target_system", "event_type"], as_index=False)
@@ -435,7 +533,7 @@ def impact_sunburst(df: pd.DataFrame) -> go.Figure:
         color_continuous_scale="RdYlBu_r",
         hover_data={"events": True, "avg_risk": ":.2f"},
     )
-    return style_figure(fig, "System Impact Sunburst")
+    return style_figure(fig, "System Impact Sunburst", theme_mode)
 
 
 def hotspot_rows(df: pd.DataFrame) -> list[dict[str, object]]:
@@ -654,8 +752,10 @@ app = Dash(__name__, title="Interactive Cyber Threat Visualization Dashboard")
 server = app.server
 
 app.layout = html.Div(
-    className="page",
+    id="theme-root",
+    className="page theme-dark",
     children=[
+        dcc.Store(id="theme-store", storage_type="local", data={"mode": DEFAULT_THEME}),
         dcc.Interval(id="live-interval", interval=LIVE_INTERVAL_MS, n_intervals=0),
         html.Div(
             className="hero",
@@ -667,6 +767,18 @@ app.layout = html.Div(
                         html.Div(
                             className="hero-chips",
                             children=[
+                                html.Button(
+                                    "☀️ Day",
+                                    id="theme-day-btn",
+                                    n_clicks=0,
+                                    className="theme-btn",
+                                ),
+                                html.Button(
+                                    "🌙 Dark",
+                                    id="theme-dark-btn",
+                                    n_clicks=0,
+                                    className="theme-btn",
+                                ),
                                 html.Span("Anomaly ML Signals", className="hero-chip"),
                                 html.Span("MITRE Correlation", className="hero-chip"),
                                 html.Span("Executive Risk Intelligence", className="hero-chip"),
@@ -683,6 +795,7 @@ app.layout = html.Div(
                     f"Coverage: {MIN_DATE} to {MAX_DATE}  •  Structured Events: {len(DF):,}",
                     className="muted",
                 ),
+                html.Div(className="cyber-scanline", children=[html.Span()]),
             ],
         ),
         html.Div(
@@ -1018,26 +1131,9 @@ app.layout = html.Div(
                     page_size=12,
                     style_as_list_view=True,
                     style_table={"overflowX": "auto"},
-                    style_header={
-                        "backgroundColor": "#1e293b",
-                        "color": "#f8fafc",
-                        "fontWeight": "700",
-                        "border": "1px solid #334155",
-                    },
-                    style_cell={
-                        "backgroundColor": "#0f172a",
-                        "color": "#cbd5e1",
-                        "padding": "10px",
-                        "border": "1px solid #1e293b",
-                        "fontSize": "13px",
-                    },
-                    style_data_conditional=[
-                        {
-                            "if": {"filter_query": "{priority} >= 75"},
-                            "backgroundColor": "#3f1d2e",
-                            "color": "#fecdd3",
-                        }
-                    ],
+                    style_header=DEFAULT_TABLE_HEADER_STYLE,
+                    style_cell=DEFAULT_TABLE_CELL_STYLE,
+                    style_data_conditional=DEFAULT_TABLE_CONDITIONAL_STYLE,
                 ),
             ],
         ),
@@ -1092,6 +1188,32 @@ app.layout = html.Div(
 
 
 @app.callback(
+    Output("theme-store", "data"),
+    Input("theme-day-btn", "n_clicks"),
+    Input("theme-dark-btn", "n_clicks"),
+    State("theme-store", "data"),
+    prevent_initial_call=True,
+)
+def set_theme(day_clicks: int, dark_clicks: int, theme_data: object) -> dict[str, str]:
+    triggered = ctx.triggered_id
+    current = theme_from_store(theme_data)
+    if triggered == "theme-day-btn":
+        return {"mode": "light"}
+    if triggered == "theme-dark-btn":
+        return {"mode": "dark"}
+    return {"mode": current}
+
+
+@app.callback(
+    Output("theme-root", "className"),
+    Input("theme-store", "data"),
+)
+def apply_theme_class(theme_data: object) -> str:
+    mode = theme_from_store(theme_data)
+    return "page theme-light" if mode == "light" else "page theme-dark"
+
+
+@app.callback(
     Output("kpi-total", "children"),
     Output("kpi-risk", "children"),
     Output("kpi-anomaly", "children"),
@@ -1115,6 +1237,9 @@ app.layout = html.Div(
     Output("treemap-graph", "figure"),
     Output("sunburst-graph", "figure"),
     Output("hotspot-table", "data"),
+    Output("hotspot-table", "style_header"),
+    Output("hotspot-table", "style_cell"),
+    Output("hotspot-table", "style_data_conditional"),
     Input("live-interval", "n_intervals"),
     Input("date-range", "start_date"),
     Input("date-range", "end_date"),
@@ -1122,6 +1247,7 @@ app.layout = html.Div(
     Input("event-filter", "value"),
     Input("source-filter", "value"),
     Input("tactic-filter", "value"),
+    Input("theme-store", "data"),
 )
 def refresh(
     n_intervals: int,
@@ -1131,8 +1257,12 @@ def refresh(
     event_types: list[str] | None,
     sources: list[str] | None,
     tactics: list[str] | None,
+    theme_data: object,
 ):
     _ = n_intervals
+    theme_mode = theme_from_store(theme_data)
+    table_header_style, table_cell_style, table_conditional_style = table_styles(theme_mode)
+
     live_df = load_dataset()
     filtered = apply_filters(live_df, start_date, end_date, severities, event_types, sources, tactics)
     rt_status, rt_latency, rt_velocity, rt_anomaly_rate, rt_freshness, rt_coverage, rt_signal_quality, rt_last_sync = (
@@ -1157,13 +1287,16 @@ def refresh(
             "No AI narrative available for the current filter selection.",
             "No AI forecast available because there are no incidents in range.",
             "No AI recommendation available without hotspot activity.",
-            empty_fig("Trend & Anomaly Detection"),
-            empty_fig("Attack Type Distribution"),
-            empty_fig("Severity Heatmap (Weekday × Hour UTC)"),
-            empty_fig("Geospatial Risk Mapping"),
-            empty_fig("MITRE ATT&CK Treemap"),
-            empty_fig("System Impact Sunburst"),
+            empty_fig("Trend & Anomaly Detection", theme_mode=theme_mode),
+            empty_fig("Attack Type Distribution", theme_mode=theme_mode),
+            empty_fig("Severity Heatmap (Weekday × Hour UTC)", theme_mode=theme_mode),
+            empty_fig("Geospatial Risk Mapping", theme_mode=theme_mode),
+            empty_fig("MITRE ATT&CK Treemap", theme_mode=theme_mode),
+            empty_fig("System Impact Sunburst", theme_mode=theme_mode),
             [],
+            table_header_style,
+            table_cell_style,
+            table_conditional_style,
         )
 
     total = len(filtered)
@@ -1190,13 +1323,16 @@ def refresh(
         ai_narrative,
         ai_forecast,
         ai_action,
-        trend_chart(filtered),
-        type_pie(filtered),
-        severity_heatmap(filtered),
-        geo_map(filtered),
-        mitre_treemap(filtered),
-        impact_sunburst(filtered),
+        trend_chart(filtered, theme_mode),
+        type_pie(filtered, theme_mode),
+        severity_heatmap(filtered, theme_mode),
+        geo_map(filtered, theme_mode),
+        mitre_treemap(filtered, theme_mode),
+        impact_sunburst(filtered, theme_mode),
         hotspot_rows(filtered),
+        table_header_style,
+        table_cell_style,
+        table_conditional_style,
     )
 
 
