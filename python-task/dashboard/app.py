@@ -40,6 +40,14 @@ PALETTE = {
     "indigo": "#818cf8",
 }
 
+GRAPH_CONFIG = {
+    "displaylogo": False,
+    "responsive": True,
+    "modeBarButtonsToRemove": ["lasso2d", "select2d"],
+}
+
+GRAPH_STYLE = {"height": "360px"}
+
 
 def load_dataset() -> pd.DataFrame:
     if not DATA_PATH.exists():
@@ -108,12 +116,28 @@ def apply_filters(
 
 def style_figure(fig: go.Figure, title: str) -> go.Figure:
     fig.update_layout(
-        title=title,
-        paper_bgcolor=PALETTE["panel"],
-        plot_bgcolor=PALETTE["panel"],
+        title=dict(text=title, x=0.02, xanchor="left", font=dict(size=17, color=PALETTE["text"])),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
         font=dict(color=PALETTE["text"], family="Inter, Segoe UI, sans-serif"),
-        margin=dict(l=30, r=20, t=55, b=30),
-        legend=dict(bgcolor="rgba(0,0,0,0)", borderwidth=0),
+        margin=dict(l=30, r=20, t=58, b=34),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.01,
+            xanchor="right",
+            x=1.0,
+            bgcolor="rgba(0,0,0,0)",
+            borderwidth=0,
+            font=dict(size=11),
+        ),
+        hoverlabel=dict(
+            bgcolor="#0f172a",
+            bordercolor="#334155",
+            font=dict(color=PALETTE["text"]),
+        ),
+        autosize=True,
+        uirevision="threat-dashboard",
     )
     return fig
 
@@ -221,8 +245,26 @@ def type_pie(df: pd.DataFrame) -> go.Figure:
         color_discrete_sequence=px.colors.qualitative.Set3,
         hover_data={"events": True, "avg_risk": ":.2f"},
     )
-    fig.update_traces(textposition="inside", textinfo="percent+label")
-    return style_figure(fig, "Attack Type Distribution")
+    fig = style_figure(fig, "Attack Type Distribution")
+    fig.update_traces(
+        textposition="inside",
+        textinfo="percent",
+        insidetextorientation="radial",
+        hovertemplate="Type: %{label}<br>Incidents: %{value}<br>Share: %{percent}<extra></extra>",
+    )
+    fig.update_layout(
+        legend=dict(
+            orientation="v",
+            yanchor="middle",
+            y=0.5,
+            xanchor="left",
+            x=1.02,
+            bgcolor="rgba(0,0,0,0)",
+            borderwidth=0,
+            font=dict(size=11),
+        )
+    )
+    return fig
 
 
 def severity_heatmap(df: pd.DataFrame) -> go.Figure:
@@ -419,6 +461,64 @@ def hotspot_rows(df: pd.DataFrame) -> list[dict[str, object]]:
     return ranked.sort_values(["priority", "incidents"], ascending=False).head(12).to_dict("records")
 
 
+def build_ai_insights(df: pd.DataFrame) -> tuple[str, str, str]:
+    if df.empty:
+        return (
+            "No AI narrative available for the current filter selection.",
+            "No AI forecast available because there are no incidents in range.",
+            "No AI recommendation available without hotspot activity.",
+        )
+
+    end_ts = df["timestamp"].max()
+    recent_start = end_ts - pd.Timedelta(days=7)
+    previous_start = recent_start - pd.Timedelta(days=7)
+
+    recent = df[df["timestamp"] >= recent_start]
+    previous = df[(df["timestamp"] >= previous_start) & (df["timestamp"] < recent_start)]
+
+    recent_count = len(recent)
+    previous_count = len(previous)
+    baseline = max(previous_count, 1)
+    delta_pct = ((recent_count - previous_count) / baseline) * 100
+    trend_word = "increased" if delta_pct >= 0 else "decreased"
+
+    top_event_source = recent if not recent.empty else df
+    top_event_mode = top_event_source["event_type"].mode()
+    top_event = (
+        str(top_event_mode.iloc[0]).replace("_", " ").title()
+        if not top_event_mode.empty
+        else "General Threat Activity"
+    )
+    narrative = (
+        f"AI signal: {top_event} is the dominant threat pattern. Incident volume {trend_word} "
+        f"{abs(delta_pct):.1f}% versus the previous 7-day window."
+    )
+
+    daily_counts = df.set_index("timestamp").resample("D").size().tail(14)
+    if len(daily_counts) >= 3:
+        x = np.arange(len(daily_counts))
+        slope = float(np.polyfit(x, daily_counts.values, 1)[0])
+        direction = "upward" if slope > 0.15 else "downward" if slope < -0.15 else "stable"
+        forecast = (
+            f"AI forecast: daily incident pressure looks {direction} over the next 72 hours "
+            f"(trend slope {slope:+.2f} incidents/day)."
+        )
+    else:
+        forecast = "AI forecast: insufficient daily data points for a reliable 72-hour projection."
+
+    hotspots = hotspot_rows(df)
+    if hotspots:
+        top = hotspots[0]
+        recommendation = (
+            f"AI recommendation: prioritize {top['target_system']} in {top['target_country']} "
+            f"against {top['mitre_technique']} (priority score {top['priority']})."
+        )
+    else:
+        recommendation = "AI recommendation: no critical hotspot identified in the selected filters."
+
+    return narrative, forecast, recommendation
+
+
 def fmt_int(value: int) -> str:
     return f"{int(value):,}"
 
@@ -497,9 +597,23 @@ app.layout = html.Div(
         html.Div(
             className="hero",
             children=[
-                html.H1("Development of Interactive Cyber Threat Visualization Dashboard"),
+                html.Div(
+                    className="hero-top",
+                    children=[
+                        html.Span("AI-Integrated SOC Console", className="hero-tag"),
+                        html.Div(
+                            className="hero-chips",
+                            children=[
+                                html.Span("Anomaly ML Signals", className="hero-chip"),
+                                html.Span("MITRE Correlation", className="hero-chip"),
+                                html.Span("Executive Risk Intelligence", className="hero-chip"),
+                            ],
+                        ),
+                    ],
+                ),
+                html.H1("Interactive Cyber Threat Visualization Dashboard"),
                 html.P(
-                    "Data-driven security operations dashboard with geospatial risk mapping, temporal anomaly detection, "
+                    "AI-enhanced security operations cockpit with geospatial risk mapping, temporal anomaly detection, "
                     "MITRE ATT&CK prioritization, and executive reporting."
                 ),
                 html.P(
@@ -587,7 +701,7 @@ app.layout = html.Div(
                     className="filter-item action",
                     children=[
                         html.Button(
-                            "Download Executive Report",
+                            "Download AI Executive Report",
                             id="download-btn",
                             className="download-btn",
                             n_clicks=0,
@@ -608,30 +722,158 @@ app.layout = html.Div(
             ],
         ),
         html.Div(
-            className="grid two",
+            className="ai-brief-grid",
             children=[
-                dcc.Graph(id="trend-graph", config={"displaylogo": False}),
-                dcc.Graph(id="type-graph", config={"displaylogo": False}),
+                html.Div(
+                    className="ai-brief",
+                    children=[
+                        html.Span("AI Threat Narrative"),
+                        html.P(id="ai-narrative"),
+                    ],
+                ),
+                html.Div(
+                    className="ai-brief",
+                    children=[
+                        html.Span("AI Forecast Signal"),
+                        html.P(id="ai-forecast"),
+                    ],
+                ),
+                html.Div(
+                    className="ai-brief",
+                    children=[
+                        html.Span("AI Action Recommendation"),
+                        html.P(id="ai-action"),
+                    ],
+                ),
             ],
         ),
         html.Div(
             className="grid two",
             children=[
-                dcc.Graph(id="heatmap-graph", config={"displaylogo": False}),
-                dcc.Graph(id="geo-graph", config={"displaylogo": False}),
+                html.Div(
+                    className="viz-card",
+                    children=[
+                        html.Div(
+                            className="viz-head",
+                            children=[
+                                html.H4("Trend & Anomaly Detection"),
+                                html.Span("Temporal risk behavior"),
+                            ],
+                        ),
+                        dcc.Graph(
+                            id="trend-graph",
+                            className="viz-graph",
+                            style=GRAPH_STYLE,
+                            config=GRAPH_CONFIG,
+                        ),
+                    ],
+                ),
+                html.Div(
+                    className="viz-card",
+                    children=[
+                        html.Div(
+                            className="viz-head",
+                            children=[
+                                html.H4("Attack Type Distribution"),
+                                html.Span("AI clustering view"),
+                            ],
+                        ),
+                        dcc.Graph(
+                            id="type-graph",
+                            className="viz-graph",
+                            style=GRAPH_STYLE,
+                            config=GRAPH_CONFIG,
+                        ),
+                    ],
+                ),
             ],
         ),
         html.Div(
             className="grid two",
             children=[
-                dcc.Graph(id="treemap-graph", config={"displaylogo": False}),
-                dcc.Graph(id="sunburst-graph", config={"displaylogo": False}),
+                html.Div(
+                    className="viz-card",
+                    children=[
+                        html.Div(
+                            className="viz-head",
+                            children=[
+                                html.H4("Severity Heatmap"),
+                                html.Span("Weekday × hour intensity"),
+                            ],
+                        ),
+                        dcc.Graph(
+                            id="heatmap-graph",
+                            className="viz-graph",
+                            style=GRAPH_STYLE,
+                            config=GRAPH_CONFIG,
+                        ),
+                    ],
+                ),
+                html.Div(
+                    className="viz-card",
+                    children=[
+                        html.Div(
+                            className="viz-head",
+                            children=[
+                                html.H4("Geospatial Risk Mapping"),
+                                html.Span("Origin-to-target attack routes"),
+                            ],
+                        ),
+                        dcc.Graph(
+                            id="geo-graph",
+                            className="viz-graph",
+                            style=GRAPH_STYLE,
+                            config=GRAPH_CONFIG,
+                        ),
+                    ],
+                ),
+            ],
+        ),
+        html.Div(
+            className="grid two",
+            children=[
+                html.Div(
+                    className="viz-card",
+                    children=[
+                        html.Div(
+                            className="viz-head",
+                            children=[
+                                html.H4("MITRE ATT&CK Treemap"),
+                                html.Span("Tactic and technique prioritization"),
+                            ],
+                        ),
+                        dcc.Graph(
+                            id="treemap-graph",
+                            className="viz-graph",
+                            style=GRAPH_STYLE,
+                            config=GRAPH_CONFIG,
+                        ),
+                    ],
+                ),
+                html.Div(
+                    className="viz-card",
+                    children=[
+                        html.Div(
+                            className="viz-head",
+                            children=[
+                                html.H4("System Impact Sunburst"),
+                                html.Span("Blast radius perspective"),
+                            ],
+                        ),
+                        dcc.Graph(
+                            id="sunburst-graph",
+                            className="viz-graph",
+                            style=GRAPH_STYLE,
+                            config=GRAPH_CONFIG,
+                        ),
+                    ],
+                ),
             ],
         ),
         html.Div(
             className="table-wrap",
             children=[
-                html.H3("Vulnerability Prioritization Table"),
+                html.H3("AI-Prioritized Vulnerability Table"),
                 html.P(
                     "Target hotspots ranked by volume, risk, anomalies, and criticality.",
                     className="muted",
@@ -676,8 +918,50 @@ app.layout = html.Div(
             ],
         ),
         html.Div(
+            className="connect-wrap",
+            children=[
+                html.H3("Connect", className="text-highlight-black"),
+                html.Div(
+                    className="connect-grid",
+                    children=[
+                        html.Div(
+                            className="connect-item",
+                            children=[
+                                html.Span("Name"),
+                                html.P("Vedant Kasaudhan", className="text-highlight-black"),
+                            ],
+                        ),
+                        html.Div(
+                            className="connect-item",
+                            children=[
+                                html.Span("Email"),
+                                html.A(
+                                    "vedantkasaudhan0@gmail.com",
+                                    href="mailto:vedantkasaudhan0@gmail.com",
+                                    className="connect-link text-highlight-black",
+                                ),
+                            ],
+                        ),
+                        html.Div(
+                            className="connect-item",
+                            children=[
+                                html.Span("LinkedIn"),
+                                html.A(
+                                    "linkedin.com/in/vedant-kasaudhan-9a444a291",
+                                    href="https://www.linkedin.com/in/vedant-kasaudhan-9a444a291/",
+                                    target="_blank",
+                                    rel="noopener noreferrer",
+                                    className="connect-link text-highlight-black",
+                                ),
+                            ],
+                        ),
+                    ],
+                ),
+            ],
+        ),
+        html.Div(
             className="footer",
-            children="Built with Dash + Plotly for analyst and executive cybersecurity decision support",
+            children="AI-enhanced dashboard built with Dash + Plotly for analyst and executive cybersecurity decision support",
         ),
     ],
 )
@@ -689,6 +973,9 @@ app.layout = html.Div(
     Output("kpi-anomaly", "children"),
     Output("kpi-critical", "children"),
     Output("kpi-target", "children"),
+    Output("ai-narrative", "children"),
+    Output("ai-forecast", "children"),
+    Output("ai-action", "children"),
     Output("trend-graph", "figure"),
     Output("type-graph", "figure"),
     Output("heatmap-graph", "figure"),
@@ -720,6 +1007,9 @@ def refresh(
             "0",
             "0",
             "N/A",
+            "No AI narrative available for the current filter selection.",
+            "No AI forecast available because there are no incidents in range.",
+            "No AI recommendation available without hotspot activity.",
             empty_fig("Trend & Anomaly Detection"),
             empty_fig("Attack Type Distribution"),
             empty_fig("Severity Heatmap (Weekday × Hour UTC)"),
@@ -734,6 +1024,7 @@ def refresh(
     anomalies = int(filtered["anomaly_flag"].sum())
     critical = int((filtered["severity_label"] == "Critical").sum())
     top_target = str(filtered["target_country"].value_counts().idxmax())
+    ai_narrative, ai_forecast, ai_action = build_ai_insights(filtered)
 
     return (
         fmt_int(total),
@@ -741,6 +1032,9 @@ def refresh(
         fmt_int(anomalies),
         fmt_int(critical),
         top_target,
+        ai_narrative,
+        ai_forecast,
+        ai_action,
         trend_chart(filtered),
         type_pie(filtered),
         severity_heatmap(filtered),
